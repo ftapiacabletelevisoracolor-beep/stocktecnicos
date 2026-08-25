@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%A6%3C/text%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%A6%3C/text%3E%3C/svg%3E">
+
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Stock Técnico">
+<meta name="theme-color" content="#1a1d23">
+
+<title>Stock Técnico</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; background:#1a1d23; color:#e4e8f0; font-family:-apple-system,Segoe UI,Roboto,sans-serif; }
+  header { padding:16px; background:#22262f; border-bottom:1px solid #2e3340; position:sticky; top:0; z-index:10; }
+  h1 { margin:0 0 2px; font-size:18px; }
+  .sub { font-size:12px; color:#7a8196; }
+
+  .selector { padding:32px 20px; }
+  .selector label { display:block; font-size:14px; color:#7a8196; margin-bottom:10px; text-align:center; }
+  .selector-row { display:flex; gap:8px; max-width:320px; margin:0 auto; }
+  .selector-row input {
+    flex:1; padding:14px; border-radius:8px; border:1px solid #2e3340;
+    background:#22262f; color:#e4e8f0; font-size:20px; text-align:center;
+    letter-spacing:2px;
+  }
+  .selector-row button {
+    padding:14px 18px; border-radius:8px; border:none;
+    background:#4f8ef7; color:#fff; font-size:14px; font-weight:600; cursor:pointer;
+    white-space:nowrap;
+  }
+  .selector-hint { text-align:center; font-size:11px; color:#5a6070; margin-top:10px; }
+
+  .buscador { margin:12px 16px; display:flex; gap:8px; align-items:center; }
+  .buscador input {
+    flex:1; padding:10px 12px; border-radius:6px; border:1px solid #2e3340;
+    background:#22262f; color:#e4e8f0; font-size:14px;
+  }
+  .link-btn {
+    background:none; border:none; color:#4f8ef7; font-size:12px; cursor:pointer;
+    white-space:nowrap; padding:4px 6px;
+  }
+
+  table { width:100%; border-collapse:collapse; margin:0 0 24px; }
+  th, td { padding:9px 12px; text-align:left; font-size:13px; border-bottom:1px solid #2e3340; }
+  th { color:#7a8196; font-size:10px; text-transform:uppercase; letter-spacing:.5px; }
+  .serie { color:#9aa4b8; font-family:monospace; font-size:12px; }
+  .estado { padding:40px 16px; text-align:center; color:#7a8196; font-size:13px; }
+</style>
+</head>
+<body>
+  <header>
+    <h1 id="titulo">Stock Técnico</h1>
+    <div class="sub" id="subtitulo"></div>
+  </header>
+
+  <div class="selector" id="selector">
+    <label>Ingresá tu número de móvil</label>
+    <div class="selector-row">
+      <input type="text" id="inputMovil" placeholder="Ej: 104" inputmode="numeric" autocomplete="off">
+      <button id="btnVer">Ver stock</button>
+    </div>
+    <div class="selector-hint">Solo el número, sin "CTC"</div>
+  </div>
+
+  <div class="buscador" id="buscadorWrap" style="display:none">
+    <input type="text" id="buscar" placeholder="Buscar artículo o serie...">
+    <button class="link-btn" id="btnCambiar">Cambiar móvil</button>
+  </div>
+
+  <div id="contenido"></div>
+
+<script>
+  // ================= CONFIG =================
+  const APPS_SCRIPT_URL = 'PEGAR_ACA_LA_MISMA_URL_QUE_USA_EL_TAMPERMONKEY_DE_NAPS';
+  const ACCESS_PASSWORD = 'NAP LLENAS';
+  // ============================================
+
+  const elSelector = document.getElementById('selector');
+  const elBuscadorWrap = document.getElementById('buscadorWrap');
+  const elInputMovil = document.getElementById('inputMovil');
+  const elBtnVer = document.getElementById('btnVer');
+  const elBtnCambiar = document.getElementById('btnCambiar');
+  const elBuscar = document.getElementById('buscar');
+  const elContenido = document.getElementById('contenido');
+  const elTitulo = document.getElementById('titulo');
+  const elSubtitulo = document.getElementById('subtitulo');
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function formatoFecha(ts) {
+    if (!ts) return 'sin datos todavía';
+    const d = new Date(ts);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())} hs`;
+  }
+
+  // Acepta "104", "CTC104", "ctc 104", etc. — se queda solo con los
+  // números y arma "CTC104" (3 dígitos, con ceros adelante si hace falta).
+  function normalizarMovil(input) {
+    const digits = String(input || '').replace(/\D/g, '');
+    if (!digits) return '';
+    return 'CTC' + digits.padStart(3, '0');
+  }
+
+  function mostrarSelector() {
+    elSelector.style.display = 'block';
+    elBuscadorWrap.style.display = 'none';
+    elContenido.innerHTML = '';
+    elTitulo.textContent = 'Stock Técnico';
+    elSubtitulo.textContent = '';
+    elInputMovil.value = '';
+    elInputMovil.focus();
+    history.pushState(null, '', window.location.pathname);
+  }
+
+  async function mostrarMovil(movil) {
+    elSelector.style.display = 'none';
+    elBuscadorWrap.style.display = 'flex';
+    elBuscar.value = '';
+    elTitulo.textContent = movil;
+    elSubtitulo.textContent = 'Cargando...';
+    elContenido.innerHTML = '<div class="estado">Cargando...</div>';
+    document.title = 'Stock ' + movil;
+    history.pushState(null, '', '?movil=' + encodeURIComponent(movil));
+
+    if (APPS_SCRIPT_URL.includes('PEGAR_ACA')) {
+      elSubtitulo.textContent = '';
+      elContenido.innerHTML = '<div class="estado">Falta configurar APPS_SCRIPT_URL en esta página.</div>';
+      return;
+    }
+
+    try {
+      const url = `${APPS_SCRIPT_URL}?accion=stock&movil=${encodeURIComponent(movil)}&pass=${encodeURIComponent(ACCESS_PASSWORD)}`;
+      const res = await fetch(url);
+      const data = await res.json();
+
+      if (!data.ok) {
+        elSubtitulo.textContent = '';
+        elContenido.innerHTML = `<div class="estado">Error: ${escapeHtml(data.error || 'desconocido')}</div>`;
+        return;
+      }
+
+      elSubtitulo.textContent = 'Actualizado: ' + formatoFecha(data.actualizado);
+
+      if (!data.items.length) {
+        elContenido.innerHTML = '<div class="estado">Este móvil no tiene artículos cargados.</div>';
+        return;
+      }
+
+      const filas = data.items.map((it) => {
+        const busq = (it.articulo + ' ' + it.serieBase).toLowerCase();
+        return `<tr class="fila" data-busq="${escapeHtml(busq)}">
+          <td>${escapeHtml(it.articulo)}</td>
+          <td class="serie">${escapeHtml(it.serieBase)}</td>
+        </tr>`;
+      }).join('');
+
+      elContenido.innerHTML = `<table>
+        <thead><tr><th>Artículo</th><th>Serie</th></tr></thead>
+        <tbody id="cuerpo">${filas}</tbody>
+      </table>`;
+    } catch (err) {
+      elSubtitulo.textContent = '';
+      elContenido.innerHTML = '<div class="estado">No se pudo conectar. Revisá tu conexión e intentá de nuevo.</div>';
+      console.error(err);
+    }
+  }
+
+  elBtnVer.addEventListener('click', () => {
+    const movil = normalizarMovil(elInputMovil.value);
+    if (!movil) { elInputMovil.focus(); return; }
+    mostrarMovil(movil);
+  });
+  elInputMovil.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') elBtnVer.click();
+  });
+  elBtnCambiar.addEventListener('click', mostrarSelector);
+  elBuscar.addEventListener('input', (e) => {
+    const q = e.target.value.toLowerCase();
+    document.querySelectorAll('.fila').forEach((f) => {
+      f.style.display = f.dataset.busq.indexOf(q) !== -1 ? '' : 'none';
+    });
+  });
+
+  // Si el link ya trae ?movil=, va directo (bookmarks siguen andando).
+  // Si no, muestra el selector.
+  const params = new URLSearchParams(window.location.search);
+  const movilInicial = (params.get('movil') || '').trim();
+  if (movilInicial) {
+    mostrarMovil(movilInicial.toUpperCase());
+  } else {
+    mostrarSelector();
+  }
+</script>
+</body>
+</html>
