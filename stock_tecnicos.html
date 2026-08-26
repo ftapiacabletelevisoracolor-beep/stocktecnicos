@@ -4,8 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%A6%3C/text%3E%3C/svg%3E">
-<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%A6%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="manifest" href="manifest.json">
 
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -51,6 +52,9 @@
   th { color:#7a8196; font-size:10px; text-transform:uppercase; letter-spacing:.5px; }
   .serie { color:#9aa4b8; font-family:monospace; font-size:12px; }
   .estado { padding:40px 16px; text-align:center; color:#7a8196; font-size:13px; }
+  .tag-hoy { color:#4fcf8a; font-weight:600; }
+  .tag-viejo { color:#f7a34f; font-weight:600; }
+  .total { text-align:center; padding:14px; font-size:12px; color:#7a8196; border-top:1px solid #2e3340; }
 </style>
 </head>
 <body>
@@ -77,7 +81,7 @@
 
 <script>
   // ================= CONFIG =================
-  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzmPcVWVMKedmPno_St6lNQqt6iX7ipIO-hTQyO7vXqIHuYLyvF8WMn_9YfhYRuK6EG/exec';
+  const APPS_SCRIPT_URL = 'PEGAR_ACA_LA_MISMA_URL_QUE_USA_EL_TAMPERMONKEY_DE_NAPS';
   const ACCESS_PASSWORD = 'NAP LLENAS';
   // ============================================
 
@@ -106,6 +110,13 @@
     return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())} hs`;
   }
 
+  function esHoy(ts) {
+    if (!ts) return false;
+    const d = new Date(ts);
+    const hoy = new Date();
+    return d.getFullYear() === hoy.getFullYear() && d.getMonth() === hoy.getMonth() && d.getDate() === hoy.getDate();
+  }
+
   // Acepta "104", "CTC104", "ctc 104", etc. — se queda solo con los
   // números y arma "CTC104" (3 dígitos, con ceros adelante si hace falta).
   function normalizarMovil(input) {
@@ -122,6 +133,7 @@
     elSubtitulo.textContent = '';
     elInputMovil.value = '';
     elInputMovil.focus();
+    localStorage.removeItem('stockTecnicoMovil');
     history.pushState(null, '', window.location.pathname);
   }
 
@@ -134,6 +146,7 @@
     elContenido.innerHTML = '<div class="estado">Cargando...</div>';
     document.title = 'Stock ' + movil;
     history.pushState(null, '', '?movil=' + encodeURIComponent(movil));
+    localStorage.setItem('stockTecnicoMovil', movil);
 
     if (APPS_SCRIPT_URL.includes('PEGAR_ACA')) {
       elSubtitulo.textContent = '';
@@ -152,7 +165,14 @@
         return;
       }
 
-      elSubtitulo.textContent = 'Actualizado: ' + formatoFecha(data.actualizado);
+      const fechaTxt = formatoFecha(data.actualizado);
+      if (data.actualizado && esHoy(data.actualizado)) {
+        elSubtitulo.innerHTML = `Actualizado: ${fechaTxt} <span class="tag-hoy">✓ hoy</span>`;
+      } else if (data.actualizado) {
+        elSubtitulo.innerHTML = `Actualizado: ${fechaTxt} <span class="tag-viejo">⚠ no es de hoy</span>`;
+      } else {
+        elSubtitulo.textContent = fechaTxt;
+      }
 
       if (!data.items.length) {
         elContenido.innerHTML = '<div class="estado">Este móvil no tiene artículos cargados.</div>';
@@ -170,7 +190,8 @@
       elContenido.innerHTML = `<table>
         <thead><tr><th>Artículo</th><th>Serie</th></tr></thead>
         <tbody id="cuerpo">${filas}</tbody>
-      </table>`;
+      </table>
+      <div class="total" id="totalArticulos">Total: ${data.items.length} artículo${data.items.length === 1 ? '' : 's'}</div>`;
     } catch (err) {
       elSubtitulo.textContent = '';
       elContenido.innerHTML = '<div class="estado">No se pudo conectar. Revisá tu conexión e intentá de nuevo.</div>';
@@ -189,19 +210,37 @@
   elBtnCambiar.addEventListener('click', mostrarSelector);
   elBuscar.addEventListener('input', (e) => {
     const q = e.target.value.toLowerCase();
-    document.querySelectorAll('.fila').forEach((f) => {
-      f.style.display = f.dataset.busq.indexOf(q) !== -1 ? '' : 'none';
+    const filas = document.querySelectorAll('.fila');
+    let visibles = 0;
+    filas.forEach((f) => {
+      const coincide = f.dataset.busq.indexOf(q) !== -1;
+      f.style.display = coincide ? '' : 'none';
+      if (coincide) visibles++;
     });
+    const totalEl = document.getElementById('totalArticulos');
+    if (totalEl) {
+      totalEl.textContent = q
+        ? `Mostrando ${visibles} de ${filas.length} artículos`
+        : `Total: ${filas.length} artículo${filas.length === 1 ? '' : 's'}`;
+    }
   });
 
   // Si el link ya trae ?movil=, va directo (bookmarks siguen andando).
-  // Si no, muestra el selector.
+  // Si no, revisa si ya lo usó antes en este celular (localStorage) y
+  // entra directo a su móvil. Si tampoco hay nada guardado, selector.
   const params = new URLSearchParams(window.location.search);
   const movilInicial = (params.get('movil') || '').trim();
+  const movilGuardado = localStorage.getItem('stockTecnicoMovil');
   if (movilInicial) {
     mostrarMovil(movilInicial.toUpperCase());
+  } else if (movilGuardado) {
+    mostrarMovil(movilGuardado);
   } else {
     mostrarSelector();
+  }
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
   }
 </script>
 </body>
