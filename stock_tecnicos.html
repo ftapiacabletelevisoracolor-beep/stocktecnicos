@@ -55,6 +55,9 @@
   .tag-hoy { color:#4fcf8a; font-weight:600; }
   .tag-viejo { color:#f7a34f; font-weight:600; }
   .total { text-align:center; padding:14px; font-size:12px; color:#7a8196; border-top:1px solid #2e3340; }
+  .badge { display:inline-block; font-size:9px; font-weight:700; padding:2px 6px; border-radius:4px; margin-left:6px; vertical-align:middle; white-space:nowrap; }
+  .badge-ctc { background:rgba(79,142,247,0.18); color:#7aa9f9; }
+  .badge-eco { background:rgba(247,163,79,0.18); color:#f7b874; }
 </style>
 </head>
 <body>
@@ -180,9 +183,12 @@
       }
 
       const filas = data.items.map((it) => {
-        const busq = (it.articulo + ' ' + it.serieBase).toLowerCase();
+        const busq = (it.articulo + ' ' + it.serieBase + ' ' + (it.empresa || '')).toLowerCase();
+        const badge = it.empresa
+          ? `<span class="badge badge-${it.empresa === 'ECO' ? 'eco' : 'ctc'}">${escapeHtml(it.empresa)}</span>`
+          : '';
         return `<tr class="fila" data-busq="${escapeHtml(busq)}">
-          <td>${escapeHtml(it.articulo)}</td>
+          <td>${escapeHtml(it.articulo)}${badge}</td>
           <td class="serie">${escapeHtml(it.serieBase)}</td>
         </tr>`;
       }).join('');
